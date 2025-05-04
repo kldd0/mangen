@@ -90,6 +90,5 @@ int main(int argc, char **argv)
     }
 
     traverse_directory(path, path);
-    free(path);
     return 0;
 }
