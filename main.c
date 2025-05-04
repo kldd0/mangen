@@ -4,9 +4,12 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <dirent.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 
 #define VERSION "1.0"
+
+#define MAX_DEPTH 1000
 
 void version(FILE *stream)
 {
@@ -24,8 +27,11 @@ void usage(FILE *stream)
     fprintf(stream, "    -v          Display version information\n");
 }
 
-void traverse_directory(const char *path, const char *cur_path)
+void traverse_directory(const char *path, const char *cur_path, int depth)
 {
+    if (depth >= MAX_DEPTH) {
+        return;
+    }
 
     DIR *dir = opendir(cur_path);
     if (dir == NULL) {
@@ -39,20 +45,28 @@ void traverse_directory(const char *path, const char *cur_path)
             continue;
         }
 
-        char entry_path[1024];
-        snprintf(entry_path, sizeof(entry_path), "%s/%s", cur_path, entry->d_name);
+        // +2 for sep '/' and null terminator
+        size_t path_len = strlen(cur_path) + strlen(entry->d_name) + 2;
+        char *entry_path = malloc(path_len);
+        if (!entry_path) {
+            fprintf(stderr, "ERROR: Memory allocation failed\n");
+            continue;
+        }
+        snprintf(entry_path, path_len, "%s/%s", cur_path, entry->d_name);
 
         struct stat statbuf;
         if (stat(entry_path, &statbuf) == -1) {
             fprintf(stderr, "ERROR: Failed to stat `%s` %s\n", entry_path, strerror(errno));
+            free(entry_path);
             continue;
         }
 
         if (S_ISDIR(statbuf.st_mode)) {
-            traverse_directory(path, entry_path);
+            traverse_directory(path, entry_path, ++depth);
         } else if (S_ISREG(statbuf.st_mode)) {
             fprintf(stdout, "%s\n", entry_path);
         }
+        free(entry_path);
     }
     closedir(dir);
 }
@@ -89,6 +103,6 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    traverse_directory(path, path);
+    traverse_directory(path, path, 0);
     return 0;
 }
