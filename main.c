@@ -5,11 +5,16 @@
 #include <getopt.h>
 #include <dirent.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/stat.h>
+#include <openssl/evp.h>
 
 #define VERSION "1.0"
 
 #define MAX_DEPTH 1000
+#define BUFFER_SIZE 4096
+
+#define return_defer() do { goto defer; } while (0)
 
 void version(FILE *stream)
 {
@@ -27,11 +32,52 @@ void usage(FILE *stream)
     fprintf(stream, "    -v          Display version information\n");
 }
 
+bool hash(const char *path, char *hash_str)
+{
+
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) goto fail;
+
+    // MD stands for `message digest`
+    // mdctx stores hash context
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    if (mdctx == NULL) goto fail;
+
+    if (EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL) == 0) goto fail;
+
+    char hash_buffer[BUFFER_SIZE];
+    size_t read = 0;
+    while ((read = fread(hash_buffer, 1, sizeof(hash_buffer), f)) > 0) {
+        if (EVP_DigestUpdate(mdctx, hash_buffer, read) == 0) goto fail;
+    }
+    if (ferror(f)) {
+        // ferror does not set errno
+        goto fail;
+    }
+
+    // Finalize hash context
+    unsigned int md_len;
+    unsigned char md_value[EVP_MAX_MD_SIZE];
+    if (EVP_DigestFinal_ex(mdctx, md_value, &md_len) == 0) goto fail;
+
+    for (unsigned int i = 0; i < md_len; i++) {
+        sprintf(hash_str + (i * 2), "%02x", md_value[i]);
+    }
+    hash_str[md_len * 2] = '\0';
+
+    fclose(f);
+    EVP_MD_CTX_free(mdctx);
+    return true;
+fail:
+    fprintf(stderr, "ERROR: Could not hash file `%s`: %s\n", path, strerror(errno));
+    if (f) fclose(f);
+    if (mdctx) EVP_MD_CTX_free(mdctx);
+    return false;
+}
+
 void traverse_directory(const char *path, const char *cur_path, int depth)
 {
-    if (depth >= MAX_DEPTH) {
-        return;
-    }
+    if (depth >= MAX_DEPTH) return;
 
     DIR *dir = opendir(cur_path);
     if (dir == NULL) {
@@ -47,26 +93,28 @@ void traverse_directory(const char *path, const char *cur_path, int depth)
 
         // +2 for sep '/' and null terminator
         size_t path_len = strlen(cur_path) + strlen(entry->d_name) + 2;
-        char *entry_path = malloc(path_len);
-        if (!entry_path) {
-            fprintf(stderr, "ERROR: Memory allocation failed\n");
+        char entry_path[path_len];
+
+        size_t cx = snprintf(entry_path, path_len, "%s/%s", cur_path, entry->d_name);
+        if (cx + 1 < path_len) {
+            fprintf(stderr, "ERROR: Failed to create path string `%s` %zu/%zu\n", entry_path, cx, path_len);
             continue;
         }
-        snprintf(entry_path, path_len, "%s/%s", cur_path, entry->d_name);
 
         struct stat statbuf;
         if (stat(entry_path, &statbuf) == -1) {
             fprintf(stderr, "ERROR: Failed to stat `%s` %s\n", entry_path, strerror(errno));
-            free(entry_path);
             continue;
         }
 
         if (S_ISDIR(statbuf.st_mode)) {
             traverse_directory(path, entry_path, ++depth);
         } else if (S_ISREG(statbuf.st_mode)) {
-            fprintf(stdout, "%s\n", entry_path);
+            char hash_str[EVP_MAX_MD_SIZE];
+            if (hash(entry_path, hash_str)) {
+                fprintf(stdout, "%s: %s\n", entry_path, hash_str);
+            }
         }
-        free(entry_path);
     }
     closedir(dir);
 }
