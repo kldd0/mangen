@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <dirent.h>
 #include <stdlib.h>
+#include <fnmatch.h>
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <openssl/evp.h>
@@ -26,10 +27,17 @@ void usage(FILE *stream)
     fprintf(stream, "Usage: ./mangen [DIR_PATH] [OPTIONS]\n");
     fprintf(stream, "Generate a manifest of files in the specified directory with hashes.\n\n");
     fprintf(stream, "ARGUMENTS:\n");
-    fprintf(stream, "    DIR_PATH    Directory to generate manifest for (default: current directory)\n");
+    fprintf(stream, "    DIR_PATH      Directory to generate manifest for (default: current directory)\n");
     fprintf(stream, "OPTIONS:\n");
-    fprintf(stream, "    -h          Display this help message\n");
-    fprintf(stream, "    -v          Display version information\n");
+    fprintf(stream, "    -h            Display this help message\n");
+    fprintf(stream, "    -v            Display version information\n");
+    fprintf(stream, "    -e PATTERN    Exclude entries matching GLOB pattern (e.g., -e \"*.txt\")\n");
+}
+
+bool match(const char *string, const char *pattern)
+{
+    int flags = FNM_PATHNAME | FNM_PERIOD;
+    return (fnmatch(pattern, string, flags) == 0);
 }
 
 bool hash(const char *path, char *hash_str)
@@ -75,7 +83,7 @@ fail:
     return false;
 }
 
-void traverse_directory(const char *path, const char *cur_path, int depth)
+void traverse_directory(const char *base_path, const char *cur_path, const char *excluding_pattern, int depth)
 {
     if (depth >= MAX_DEPTH) return;
 
@@ -87,7 +95,9 @@ void traverse_directory(const char *path, const char *cur_path, int depth)
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+        if (strcmp(entry->d_name, ".") == 0 ||
+                strcmp(entry->d_name, "..") == 0 ||
+                match(entry->d_name, excluding_pattern)) {
             continue;
         }
 
@@ -108,11 +118,14 @@ void traverse_directory(const char *path, const char *cur_path, int depth)
         }
 
         if (S_ISDIR(statbuf.st_mode)) {
-            traverse_directory(path, entry_path, ++depth);
+            traverse_directory(base_path, entry_path, excluding_pattern, ++depth);
         } else if (S_ISREG(statbuf.st_mode)) {
             char hash_str[EVP_MAX_MD_SIZE];
             if (hash(entry_path, hash_str)) {
-                fprintf(stdout, "%s: %s\n", entry_path, hash_str);
+                size_t base_path_len = strlen(base_path);
+                // +1 for sep '/'
+                char *relative_path = entry_path + base_path_len + 1;
+                fprintf(stdout, "%s : %s\n", relative_path, hash_str);
             }
         }
     }
@@ -124,8 +137,9 @@ int main(int argc, char **argv)
 {
     int c;
     const char *path = ".";
+    const char *excluding_pattern = "";
 
-    while ((c = getopt(argc, argv, "hv")) != -1) {
+    while ((c = getopt(argc, argv, "hve:")) != -1) {
         switch (c) {
             case 'h':
                 usage(stdout);
@@ -133,8 +147,10 @@ int main(int argc, char **argv)
             case 'v':
                 version(stdout);
                 return 0;
+            case 'e':
+                excluding_pattern = optarg;
+                break;
             default:
-                usage(stdout);
                 return 1;
         }
     }
@@ -151,6 +167,6 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    traverse_directory(path, path, 0);
+    traverse_directory(path, path, excluding_pattern, 0);
     return 0;
 }

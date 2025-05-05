@@ -1,9 +1,9 @@
-BUILD_DIR=build
-TARGET_NAME=mangen
-CFLAGS=-Wall -Wextra -std=c11 -pedantic -ggdb
-CFLAGS+=-I/usr/local/opt/openssl@1.1/include
-LDFLAGS=-L/usr/local/opt/openssl@1.1/lib
-LDFLAGS+=-lssl -lcrypto
+BUILD_DIR = build
+TARGET_NAME = mangen
+CFLAGS = -Wall -Wextra -Werror -std=c11 -pedantic -ggdb
+CFLAGS += -I/usr/local/opt/openssl@1.1/include
+LDFLAGS = -L/usr/local/opt/openssl@1.1/lib
+LDFLAGS += -lssl -lcrypto
 
 .PHONY: all
 
@@ -14,3 +14,6 @@ mangen: main.c
 
 build:
 	mkdir -p build
+
+clean:
+	rm -r build
