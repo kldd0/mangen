@@ -15,7 +15,7 @@
 #define MAX_DEPTH 1000
 #define BUFFER_SIZE 4096
 
-#define return_defer() do { goto defer; } while (0)
+#define return_defer(value) do { result = (value); goto defer; } while (0)
 
 void version(FILE *stream)
 {
