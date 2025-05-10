@@ -35,7 +35,7 @@ static void test_mangen_basic(void)
 
     char *app_output = NULL;
     run(template, "", &app_output);
-    unit_check(app_output != NULL, "Application ran successfully");
+    unit_check(app_output != NULL, "Mangen ran successfully");
 
     char *expected_output = NULL;
     get_expected_output(template, "", &expected_output);
@@ -62,7 +62,7 @@ static void test_mangen_with_exclusion(const char *excluding_pattern)
 
     char *app_output = NULL;
     run(template, excluding_pattern, &app_output);
-    unit_check(app_output != NULL, "App ran with exclusion");
+    unit_check(app_output != NULL, "Mangen ran with exclusion");
 
     char *expected_output = NULL;
     get_expected_output(template, excluding_pattern, &expected_output);
@@ -133,7 +133,7 @@ void run(const char *path, const char *excluding_pattern, char **output)
     unit_check(rc == 0, "Mangen executed successfully");
 
     FILE *f = fopen("/tmp/mangen_output", "rb");
-    unit_check(f != NULL, "Open app output");
+    unit_check(f != NULL, "Open mangen output");
 
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
